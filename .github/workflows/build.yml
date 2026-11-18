@@ -46,11 +46,26 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Generate lockfile and install exact dependency graph
+      - name: Generate dependency lockfile
+        timeout-minutes: 5
+        env:
+          npm_config_fetch_retries: "2"
+          npm_config_fetch_retry_mintimeout: "10000"
+          npm_config_fetch_retry_maxtimeout: "30000"
         run: |
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          npm ci --no-audit --no-fund
-          npx expo install --check
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund --fetch-retries=2
+
+      - name: Install locked dependencies
+        timeout-minutes: 10
+        env:
+          npm_config_fetch_retries: "2"
+          npm_config_fetch_retry_mintimeout: "10000"
+          npm_config_fetch_retry_maxtimeout: "30000"
+        run: npm ci --no-audit --no-fund --fetch-retries=2
+
+      - name: Verify Expo dependency compatibility
+        timeout-minutes: 5
+        run: npx expo install --check
 
       - name: Validate Expo project configuration
         run: npx expo config --type public
