@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useEffect, useRef, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Storage } from '../lib/storage';
 import { getItemKey } from '../lib/catalogueUtils';
 
 const STORAGE_KEY = 'npsreact:personal-library:v1';
@@ -24,8 +24,15 @@ function sanitizeLibrary(value) {
   return {
     favorites: Array.isArray(source.favorites) ? source.favorites : [],
     recent: Array.isArray(source.recent) ? source.recent : [],
-    collections: Array.isArray(source.collections) ? source.collections : [],
-    itemsById: source.itemsById && typeof source.itemsById === 'object' ? source.itemsById : {},
+    collections: Array.isArray(source.collections)
+      ? source.collections.map((collection) => ({
+          ...collection,
+          itemIds: Array.isArray(collection.itemIds) ? collection.itemIds : [],
+        }))
+      : [],
+    itemsById: source.itemsById && typeof source.itemsById === 'object'
+      ? source.itemsById
+      : {},
   };
 }
 
@@ -39,9 +46,10 @@ export function LibraryProvider({ children }) {
 
   useEffect(() => {
     let mounted = true;
+
     const load = async () => {
       try {
-        const stored = await AsyncStorage.getItem(STORAGE_KEY);
+        const stored = await Storage.getItem(STORAGE_KEY);
         const parsed = stored ? sanitizeLibrary(JSON.parse(stored)) : emptyLibrary;
         if (mounted) {
           libraryRef.current = parsed;
@@ -56,25 +64,27 @@ export function LibraryProvider({ children }) {
         }
       }
     };
+
     loadPromiseRef.current = load();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const commit = useCallback(async (updater) => {
-    // Wait for the first read before applying a mutation. This prevents an early
-    // favorite/recent write from replacing data that has not finished hydrating.
-    if (!readyRef.current && loadPromiseRef.current) await loadPromiseRef.current;
+    if (!readyRef.current && loadPromiseRef.current) {
+      await loadPromiseRef.current;
+    }
 
     const next = sanitizeLibrary(updater(libraryRef.current));
     libraryRef.current = next;
     setLibrary(next);
 
-    // AsyncStorage writes are serialized so a slower earlier write cannot finish
-    // after a newer write and leave stale state on disk.
     const write = writeQueueRef.current
       .catch(() => {})
-      .then(() => AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)));
+      .then(() => Storage.setItem(STORAGE_KEY, JSON.stringify(next)));
     writeQueueRef.current = write;
+
     try {
       await write;
     } catch (error) {
@@ -83,7 +93,10 @@ export function LibraryProvider({ children }) {
     return next;
   }, []);
 
-  const isFavorite = useCallback((item) => library.favorites.includes(getItemKey(item)), [library.favorites]);
+  const isFavorite = useCallback(
+    (item) => library.favorites.includes(getItemKey(item)),
+    [library.favorites]
+  );
 
   const toggleFavorite = useCallback(async (item) => {
     const id = getItemKey(item);
@@ -100,7 +113,8 @@ export function LibraryProvider({ children }) {
     const id = getItemKey(item);
     await commit((current) => ({
       ...current,
-      recent: [id, ...current.recent.filter((entry) => entry !== id)].slice(0, MAX_RECENT_ITEMS),
+      recent: [id, ...current.recent.filter((entry) => entry !== id)]
+        .slice(0, MAX_RECENT_ITEMS),
       itemsById: { ...current.itemsById, [id]: item },
     }));
   }, [commit]);
@@ -108,10 +122,14 @@ export function LibraryProvider({ children }) {
   const createCollection = useCallback(async (name) => {
     const trimmed = String(name || '').trim();
     if (!trimmed) return null;
+
     const id = 'collection-' + Date.now().toString(36);
     await commit((current) => ({
       ...current,
-      collections: [...current.collections, { id, name: trimmed, itemIds: [], createdAt: new Date().toISOString() }],
+      collections: [
+        ...current.collections,
+        { id, name: trimmed, itemIds: [], createdAt: new Date().toISOString() },
+      ],
     }));
     return id;
   }, [commit]);
@@ -119,7 +137,9 @@ export function LibraryProvider({ children }) {
   const deleteCollection = useCallback(async (collectionId) => {
     await commit((current) => ({
       ...current,
-      collections: current.collections.filter((collection) => collection.id !== collectionId),
+      collections: current.collections.filter(
+        (collection) => collection.id !== collectionId
+      ),
     }));
   }, [commit]);
 
@@ -130,7 +150,7 @@ export function LibraryProvider({ children }) {
       itemsById: { ...current.itemsById, [id]: item },
       collections: current.collections.map((collection) =>
         collection.id === collectionId
-          ? { ...collection, itemIds: [...new Set([...(collection.itemIds || []), id])] }
+          ? { ...collection, itemIds: [...new Set([...collection.itemIds, id])] }
           : collection
       ),
     }));
@@ -142,7 +162,7 @@ export function LibraryProvider({ children }) {
       ...current,
       collections: current.collections.map((collection) =>
         collection.id === collectionId
-          ? { ...collection, itemIds: (collection.itemIds || []).filter((entry) => entry !== id) }
+          ? { ...collection, itemIds: collection.itemIds.filter((entry) => entry !== id) }
           : collection
       ),
     }));
@@ -154,8 +174,16 @@ export function LibraryProvider({ children }) {
 
   return (
     <LibraryContext.Provider value={{
-      ready, library, isFavorite, toggleFavorite, recordRecent,
-      createCollection, deleteCollection, addToCollection, removeFromCollection, clearRecent,
+      ready,
+      library,
+      isFavorite,
+      toggleFavorite,
+      recordRecent,
+      createCollection,
+      deleteCollection,
+      addToCollection,
+      removeFromCollection,
+      clearRecent,
     }}>
       {children}
     </LibraryContext.Provider>
