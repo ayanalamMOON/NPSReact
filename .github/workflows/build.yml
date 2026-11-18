@@ -53,14 +53,14 @@ jobs:
           npx expo install --check
 
       - name: Commit Expo dependency alignment
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        if: github.ref_type == 'branch' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         run: |
           if ! git diff --quiet -- package.json package-lock.json; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add package.json package-lock.json
             git commit -m "chore: align dependency lockfile with Expo SDK 58"
-            git push
+            git push origin HEAD:${{ github.ref_name }}
           fi
 
       - name: Install locked dependencies
