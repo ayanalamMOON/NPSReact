@@ -1,21 +1,25 @@
+import React, { useContext, useEffect, useState } from 'react';
 import { PaperProvider, Appbar, BottomNavigation } from 'react-native-paper';
 import { StatusBar } from 'expo-status-bar';
-import React from 'react';
+import { NavigationContainer, useNavigation } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import * as SystemUI from 'expo-system-ui';
 
 import ReaderView from './views/reader';
 import SettingsView from './views/settings';
-import { useContext, useState } from 'react';
-import { NavigationContainer, useNavigation } from '@react-navigation/native';
+import LibraryView from './views/library';
+import GameDetailsView from './views/gameDetails';
 import { SettingsContext, SettingsProvider } from './contexts/SettingsContext';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { LibraryProvider } from './contexts/LibraryContext';
 import { getTheme } from './lib/themeUtils';
-import * as SystemUI from 'expo-system-ui';
 
 export default function App() {
   return (
     <SettingsProvider>
-      <StatusBar style="auto" />
-      <MainApp />
+      <LibraryProvider>
+        <StatusBar style="auto" />
+        <MainApp />
+      </LibraryProvider>
     </SettingsProvider>
   );
 }
@@ -23,32 +27,37 @@ export default function App() {
 function MainApp() {
   const Stack = createNativeStackNavigator();
   const { colorScheme, showDlcsTab } = useContext(SettingsContext);
-
   const theme = getTheme(colorScheme);
   SystemUI.setBackgroundColorAsync(theme.colors.background);
 
   const HomeView = () => {
     const navigation = useNavigation();
     const [index, setIndex] = useState(0);
-    
     const routes = [
       { key: 'games', title: 'Games', focusedIcon: 'gamepad-variant' },
-      ...(showDlcsTab ? [{ key: 'dlcs', title: "DLC's", focusedIcon: 'puzzle' }] : [])
+      ...(showDlcsTab ? [{ key: 'dlcs', title: "DLC's", focusedIcon: 'puzzle' }] : []),
+      { key: 'library', title: 'Library', focusedIcon: 'bookshelf' },
     ];
 
-    const GamesScene = () => <ReaderView route={{ params: { type: "GAMES" } }} />;
-    const DLCsScene = () => <ReaderView route={{ params: { type: "DLCS" } }} />;
+    useEffect(() => {
+      if (index >= routes.length) setIndex(0);
+    }, [index, routes.length]);
 
-    const renderScene = BottomNavigation.SceneMap({
-      games: GamesScene,
-      ...(showDlcsTab ? { dlcs: DLCsScene } : {})
-    });
-  
+    const openDetails = (item, platform, type) => {
+      navigation.navigate('GameDetails', { item, platform, type });
+    };
+
+    const renderScene = ({ route }) => {
+      if (route.key === 'games') return <ReaderView type="GAMES" onSelectItem={openDetails} />;
+      if (route.key === 'dlcs') return <ReaderView type="DLCS" onSelectItem={openDetails} />;
+      return <LibraryView onSelectItem={openDetails} />;
+    };
+
     return (
       <>
         <Appbar.Header>
           <Appbar.Content title="NoPayStation" />
-          <Appbar.Action icon="cog" onPress={() => navigation.navigate('Settings')} />
+          <Appbar.Action icon="cog" onPress={() => navigation.navigate('Settings')} accessibilityLabel="Settings" />
         </Appbar.Header>
         <BottomNavigation
           navigationState={{ index, routes }}
@@ -58,28 +67,22 @@ function MainApp() {
       </>
     );
   };
-  
 
   return (
     <PaperProvider theme={theme}>
       <NavigationContainer theme={theme}>
         <Stack.Navigator>
-          <Stack.Screen
-            name="Home"
-            component={HomeView}
-            options={{ headerShown: false }}
-          />
+          <Stack.Screen name="Home" component={HomeView} options={{ headerShown: false }} />
+          <Stack.Screen name="GameDetails" component={GameDetailsView} options={{ title: 'Game details' }} />
           <Stack.Screen
             name="Settings"
             component={SettingsView}
             options={{
               header: ({ navigation }) => (
-                <>
-                  <Appbar.Header>
-                    <Appbar.BackAction onPress={() => navigation.goBack()} />
-                    <Appbar.Content title="Settings" />
-                  </Appbar.Header>
-                </>
+                <Appbar.Header>
+                  <Appbar.BackAction onPress={() => navigation.goBack()} />
+                  <Appbar.Content title="Settings" />
+                </Appbar.Header>
               ),
             }}
           />
