@@ -1,4 +1,6 @@
 import React, { useContext, useEffect, useState } from 'react';
+import { Platform } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider, Appbar, BottomNavigation } from 'react-native-paper';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
@@ -13,22 +15,32 @@ import { SettingsContext, SettingsProvider } from './contexts/SettingsContext';
 import { LibraryProvider } from './contexts/LibraryContext';
 import { getTheme } from './lib/themeUtils';
 
+const Stack = createNativeStackNavigator();
+
 export default function App() {
   return (
-    <SettingsProvider>
-      <LibraryProvider>
-        <StatusBar style="auto" />
-        <MainApp />
-      </LibraryProvider>
-    </SettingsProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SettingsProvider>
+        <LibraryProvider>
+          <StatusBar style="auto" />
+          <MainApp />
+        </LibraryProvider>
+      </SettingsProvider>
+    </GestureHandlerRootView>
   );
 }
 
 function MainApp() {
-  const Stack = createNativeStackNavigator();
   const { colorScheme, showDlcsTab } = useContext(SettingsContext);
   const theme = getTheme(colorScheme);
-  SystemUI.setBackgroundColorAsync(theme.colors.background);
+
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      SystemUI.setBackgroundColorAsync(theme.colors.background).catch((error) => {
+        console.warn('Unable to update system background color:', error);
+      });
+    }
+  }, [theme.colors.background]);
 
   const HomeView = () => {
     const navigation = useNavigation();
@@ -48,8 +60,12 @@ function MainApp() {
     };
 
     const renderScene = ({ route }) => {
-      if (route.key === 'games') return <ReaderView type="GAMES" onSelectItem={openDetails} />;
-      if (route.key === 'dlcs') return <ReaderView type="DLCS" onSelectItem={openDetails} />;
+      if (route.key === 'games') {
+        return <ReaderView type="GAMES" onSelectItem={openDetails} />;
+      }
+      if (route.key === 'dlcs') {
+        return <ReaderView type="DLCS" onSelectItem={openDetails} />;
+      }
       return <LibraryView onSelectItem={openDetails} />;
     };
 
@@ -57,7 +73,11 @@ function MainApp() {
       <>
         <Appbar.Header>
           <Appbar.Content title="NoPayStation" />
-          <Appbar.Action icon="cog" onPress={() => navigation.navigate('Settings')} accessibilityLabel="Settings" />
+          <Appbar.Action
+            icon="cog"
+            onPress={() => navigation.navigate('Settings')}
+            accessibilityLabel="Settings"
+          />
         </Appbar.Header>
         <BottomNavigation
           navigationState={{ index, routes }}
@@ -72,8 +92,16 @@ function MainApp() {
     <PaperProvider theme={theme}>
       <NavigationContainer theme={theme}>
         <Stack.Navigator>
-          <Stack.Screen name="Home" component={HomeView} options={{ headerShown: false }} />
-          <Stack.Screen name="GameDetails" component={GameDetailsView} options={{ title: 'Game details' }} />
+          <Stack.Screen
+            name="Home"
+            component={HomeView}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="GameDetails"
+            component={GameDetailsView}
+            options={{ title: 'Game details' }}
+          />
           <Stack.Screen
             name="Settings"
             component={SettingsView}
