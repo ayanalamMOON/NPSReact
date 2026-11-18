@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator, Button, Dialog, Divider, IconButton, Portal,
@@ -41,6 +41,7 @@ export default function ReaderView({ route, type, onSelectItem }) {
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [sortVisible, setSortVisible] = useState(false);
   const [snackbar, setSnackbar] = useState('');
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     if (!availablePlatforms.some((entry) => entry.value === platform)) {
@@ -49,24 +50,43 @@ export default function ReaderView({ route, type, onSelectItem }) {
   }, [availablePlatforms, platform]);
 
   const loadCatalogue = useCallback(async (isRefresh) => {
+    const requestId = ++requestIdRef.current;
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError('');
-    try {
-      const rows = await fetchCatalogue(platform, catalogueType, serverUrl);
-      setData(rows);
-    } catch (loadError) {
-      setError(loadError.message || 'Unable to load the catalogue.');
+    if (catalogueType === 'DLCS' && !['PSV', 'PS3', 'PSP'].includes(platform)) {
       setData([]);
-    } finally {
+      setError('unsupported:' + platform);
       setLoading(false);
       setRefreshing(false);
+      return;
+    }
+    try {
+      const rows = await fetchCatalogue(platform, catalogueType, serverUrl);
+      if (requestId === requestIdRef.current) setData(rows);
+    } catch (loadError) {
+      if (requestId === requestIdRef.current) {
+        setError(loadError.message || 'Unable to load the catalogue.');
+        setData([]);
+      }
+    } finally {
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [platform, catalogueType, serverUrl]);
 
   useEffect(() => {
     loadCatalogue(false);
+    return () => { requestIdRef.current += 1; };
   }, [loadCatalogue]);
+
+  useEffect(() => {
+    setRegion('All');
+    setContentType('All');
+    setAvailability('all');
+  }, [platform, catalogueType]);
 
   const regions = useMemo(() => getDistinctRegions(data), [data]);
   const filteredItems = useMemo(() => {
@@ -136,6 +156,11 @@ export default function ReaderView({ route, type, onSelectItem }) {
         <View style={styles.center}>
           <ActivityIndicator size="large" />
           <Text style={styles.muted}>Loading {catalogueType.toLowerCase()} catalogue...</Text>
+        </View>
+      ) : error.startsWith('unsupported:') ? (
+        <View style={styles.center}>
+          <Text variant="titleMedium">No DLC catalogue for this platform</Text>
+          <Text style={styles.muted}>No separate DLC TSV is published for {error.replace('unsupported:', '')}. Choose PSV, PSP or PS3.</Text>
         </View>
       ) : error ? (
         <View style={styles.center}>

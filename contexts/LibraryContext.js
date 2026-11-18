@@ -33,6 +33,9 @@ export function LibraryProvider({ children }) {
   const [library, setLibrary] = useState(emptyLibrary);
   const [ready, setReady] = useState(false);
   const libraryRef = useRef(emptyLibrary);
+  const readyRef = useRef(false);
+  const loadPromiseRef = useRef(null);
+  const writeQueueRef = useRef(Promise.resolve());
 
   useEffect(() => {
     let mounted = true;
@@ -47,19 +50,33 @@ export function LibraryProvider({ children }) {
       } catch (error) {
         console.warn('Unable to load personal library:', error);
       } finally {
-        if (mounted) setReady(true);
+        if (mounted) {
+          readyRef.current = true;
+          setReady(true);
+        }
       }
     };
-    load();
+    loadPromiseRef.current = load();
     return () => { mounted = false; };
   }, []);
 
   const commit = useCallback(async (updater) => {
+    // Wait for the first read before applying a mutation. This prevents an early
+    // favorite/recent write from replacing data that has not finished hydrating.
+    if (!readyRef.current && loadPromiseRef.current) await loadPromiseRef.current;
+
     const next = sanitizeLibrary(updater(libraryRef.current));
     libraryRef.current = next;
     setLibrary(next);
+
+    // AsyncStorage writes are serialized so a slower earlier write cannot finish
+    // after a newer write and leave stale state on disk.
+    const write = writeQueueRef.current
+      .catch(() => {})
+      .then(() => AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)));
+    writeQueueRef.current = write;
     try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      await write;
     } catch (error) {
       console.warn('Unable to persist personal library:', error);
     }
