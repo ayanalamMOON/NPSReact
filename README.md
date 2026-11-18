@@ -1,6 +1,6 @@
-[![Android Build](https://github.com/ayanalamMOON/NPSReact/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/ayanalamMOON/NPSReact/actions/workflows/build.yml)
-
 # NPSReact
+
+[![Android Build](https://github.com/ayanalamMOON/NPSReact/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/ayanalamMOON/NPSReact/actions/workflows/build.yml)
 
 Created with React Native and React Native Paper, featuring Material You design.
 
@@ -16,13 +16,16 @@ NPSReact is a catalogue browser for publicly available NoPayStation metadata. It
 - Find related DLC by matching the catalogue Title ID.
 - Save favorites and view recently opened entries.
 - Create named collections and add or remove catalogue entries.
-- Keep favorites, history, collection membership and saved entry metadata on-device using AsyncStorage.
+- Keep favorites, history, collection membership and saved entry metadata on-device.
 
-## Catalogue and storage behavior
+## Offline catalogue and storage
 
-The app reads the upstream TSV catalogue and keeps personal library data locally. The personal library does not require an account or a project-owned backend. The catalogue itself is refreshed from the configured TSV server.
-
-Favorites, recently viewed entries and custom collections are stored under a versioned AsyncStorage key. Removing an entry from a collection does not remove it from favorites or recent history.
+- Catalogue snapshots are persisted locally and are displayed immediately on the next visit.
+- NPSReact revalidates cached TSV catalogues with ETag and Last-Modified headers.
+- When the network is unavailable, the latest saved catalogue remains searchable and filterable.
+- Native settings, favourites, recent history, collections and catalogue cache use the SQLite-backed Expo KV store.
+- Existing AsyncStorage settings and personal-library data are migrated on first launch after upgrading. The browser build continues to use the web-compatible AsyncStorage implementation.
+- Cache entries are keyed by platform and catalogue type. Refresh the screen with pull-to-refresh to request the latest upstream data.
 
 ## Platform support
 
@@ -32,42 +35,49 @@ Favorites, recently viewed entries and custom collections are stored under a ver
 - PS3
 - PSP
 
-Available platforms can be configured in Settings. Games and DLC catalogues are shown separately.
+Available platforms can be configured in Settings. Games and DLC catalogues are shown separately. Separate DLC catalogues are available for PSV, PS3 and PSP.
 
 ## Tech stack
 
-- React Native / Expo
+- Expo SDK 58
+- React 19.3 and React Native 0.88
 - React Native Paper (Material 3)
-- React Navigation
-- AsyncStorage
+- React Navigation 7
+- Expo SQLite KV Store for native persistence
+- AsyncStorage for browser persistence and one-time legacy-data migration
 - PapaParse for TSV parsing
-- react-native-blob-util for Android downloads
+- react-native-blob-util 1.x for native file transfers and Android MediaStore downloads
+- Expo Clipboard and Expo Haptics
+
+## Network and download security
+
+The default catalogue endpoint uses HTTPS. Custom catalogue servers must use HTTPS, except for localhost development endpoints. Package downloads are also restricted to HTTPS. The app does not enable Android cleartext traffic globally.
 
 ## Android CI/CD
 
-GitHub Actions builds the Android app on pushes to `main`, pull requests targeting `main`, and manual workflow dispatches.
+GitHub Actions builds the Android app on pushes to `main`, pull requests targeting `main`, version tags, and manual workflow dispatches.
 
-The workflow runs dependency installation, Expo configuration validation, an Expo Doctor diagnostic, Android JavaScript bundling, a clean Expo Prebuild, and Gradle compilation of both debug and release APKs.
+The workflow aligns Expo dependencies, persists the resulting lockfile when it changes on a same-repository branch, installs the locked dependency graph, runs Expo Doctor, exports Android and web bundles, generates a clean Android native project, and compiles a debug APK, release APK and Android App Bundle.
 
 ### Download a build
 
 1. Open the repository's **Actions** tab.
 2. Select **NPSReact Android CI/CD**.
-3. Open the latest successful **Build Android APKs** run.
+3. Open a successful **Validate and build Android** run.
 4. Download the `npsreact-android-<commit-sha>` artifact.
 5. Install `app-debug.apk` for development testing or `app-release.apk` for direct device testing.
 
-Each build also includes SHA-256 checksums and build metadata. Artifacts are retained for 30 days.
+Each build includes an Android App Bundle, SHA-256 checksums and build metadata. Artifacts are retained for 30 days.
 
 ### Publish a GitHub Release
 
-Push a version tag such as `v1.3.0`. GitHub Actions will build the APKs and publish them with generated release notes.
+Push a version tag such as `v1.4.0`. GitHub Actions will build the APKs and AAB, then publish them with generated release notes.
 
-**Signing note:** The generated release APK uses the native project's default signing configuration. It is suitable for direct installation/testing, but production distribution through Google Play and seamless updates across releases require a persistent Android upload keystore configured in the project.
+**Signing note:** The generated release APK and AAB use the native project's default signing configuration. They are suitable for testing, not Google Play distribution. Configure a persistent Android upload keystore and matching GitHub Actions secrets before production publishing or seamless in-place app updates.
 
 ## Development
 
-Install dependencies with npm install, then run npm start or npm run android.
+Install dependencies with `npm install`, then run `npm start`. Use `npm run android` for a local Android development build or `npm run web` for the browser build. Run `npm run doctor` and `npm run check:expo` before submitting dependency changes.
 
 ## Piracy disclaimer
 
@@ -77,4 +87,4 @@ This app is designed solely as a convenient browser tool to access publicly avai
 
 ## About the code
 
-The application uses React Native with react-native-paper, allowing the interface to follow Material 3 design conventions. Personal library data is persisted locally on the device.
+The application uses React Native with react-native-paper, allowing the interface to follow Material 3 design conventions. Personal library data and cached catalogue snapshots are persisted locally.
