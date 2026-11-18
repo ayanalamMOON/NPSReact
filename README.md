@@ -23,7 +23,7 @@ NPSReact is a catalogue browser for publicly available NoPayStation metadata. It
 - Catalogue snapshots are persisted locally and are displayed immediately on the next visit.
 - NPSReact revalidates cached TSV catalogues with ETag and Last-Modified headers.
 - When the network is unavailable, the latest saved catalogue remains searchable and filterable.
-- Native settings, favourites, recent history, collections and catalogue cache use the SQLite-backed Expo KV store.
+- Native settings, favourites, recent history, collections and catalogue cache use the SQLite-backed Expo KV store. Previously saved `http://nopaystation.com` settings are upgraded automatically to the HTTPS endpoint.
 - Existing AsyncStorage settings and personal-library data are migrated on first launch after upgrading. The browser build continues to use the web-compatible AsyncStorage implementation.
 - Cache entries are keyed by platform and catalogue type. Refresh the screen with pull-to-refresh to request the latest upstream data.
 
@@ -46,7 +46,7 @@ Available platforms can be configured in Settings. Games and DLC catalogues are 
 - Expo SQLite KV Store for native persistence
 - AsyncStorage for browser persistence and one-time legacy-data migration
 - PapaParse for TSV parsing
-- react-native-blob-util 1.x for native file transfers and Android MediaStore downloads
+- react-native-blob-util 1.x for native file transfers, Android's system DownloadManager/Downloads collection, and iOS document sharing
 - Expo Clipboard and Expo Haptics
 
 ## Network and download security
