@@ -7,7 +7,7 @@ import {
 import { SettingsContext } from '../contexts/SettingsContext';
 import { LibraryContext } from '../contexts/LibraryContext';
 import CatalogueCard from '../components/CatalogueCard';
-import { fetchCatalogue } from '../lib/catalogueService';
+import { fetchCatalogue, getCachedCatalogue } from '../lib/catalogueService';
 import {
   filterCatalogue, getDistinctRegions, getItemKey, sortCatalogue,
   SORT_OPTIONS, SUPPORTED_PLATFORMS,
@@ -38,10 +38,12 @@ export default function ReaderView({ route, type, onSelectItem }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [cacheStatus, setCacheStatus] = useState('');
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [sortVisible, setSortVisible] = useState(false);
   const [snackbar, setSnackbar] = useState('');
   const requestIdRef = useRef(0);
+  const abortControllerRef = useRef(null);
 
   useEffect(() => {
     if (!availablePlatforms.some((entry) => entry.value === platform)) {
@@ -50,10 +52,19 @@ export default function ReaderView({ route, type, onSelectItem }) {
   }, [availablePlatforms, platform]);
 
   const loadCatalogue = useCallback(async (isRefresh) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     const requestId = ++requestIdRef.current;
+
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError('');
+    setCacheStatus('');
+
     if (catalogueType === 'DLCS' && !['PSV', 'PS3', 'PSP'].includes(platform)) {
       setData([]);
       setError('unsupported:' + platform);
@@ -61,11 +72,37 @@ export default function ReaderView({ route, type, onSelectItem }) {
       setRefreshing(false);
       return;
     }
+
+    if (!isRefresh) {
+      try {
+        const cached = await getCachedCatalogue(platform, catalogueType);
+        if (requestId === requestIdRef.current && cached) {
+          setData(cached.rows);
+          setLoading(false);
+          setCacheStatus('Saved catalogue loaded. Checking for updates…');
+        }
+      } catch (cacheError) {
+        console.warn('Unable to load saved catalogue:', cacheError);
+      }
+    }
+
     try {
-      const rows = await fetchCatalogue(platform, catalogueType, serverUrl);
-      if (requestId === requestIdRef.current) setData(rows);
-    } catch (loadError) {
+      const result = await fetchCatalogue(platform, catalogueType, serverUrl, {
+        signal: controller.signal,
+      });
+
       if (requestId === requestIdRef.current) {
+        setData(result.rows);
+        if (result.stale) {
+          setCacheStatus('Offline: showing the last saved catalogue.');
+        } else if (result.notModified) {
+          setCacheStatus('Saved catalogue is up to date.');
+        } else {
+          setCacheStatus('');
+        }
+      }
+    } catch (loadError) {
+      if (requestId === requestIdRef.current && !controller.signal.aborted) {
         setError(loadError.message || 'Unable to load the catalogue.');
         setData([]);
       }
@@ -79,7 +116,10 @@ export default function ReaderView({ route, type, onSelectItem }) {
 
   useEffect(() => {
     loadCatalogue(false);
-    return () => { requestIdRef.current += 1; };
+    return () => {
+      requestIdRef.current += 1;
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+    };
   }, [loadCatalogue]);
 
   useEffect(() => {
@@ -91,7 +131,10 @@ export default function ReaderView({ route, type, onSelectItem }) {
   const regions = useMemo(() => getDistinctRegions(data), [data]);
   const filteredItems = useMemo(() => {
     const filtered = filterCatalogue(data, {
-      query: searchQuery, region, contentType, downloadAvailability: availability,
+      query: searchQuery,
+      region,
+      contentType,
+      downloadAvailability: availability,
     });
     return sortCatalogue(filtered, sortBy);
   }, [data, searchQuery, region, contentType, availability, sortBy]);
@@ -131,7 +174,12 @@ export default function ReaderView({ route, type, onSelectItem }) {
         loading={loading}
       />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.platforms}>
-        <SegmentedButtons value={platform} onValueChange={setPlatform} buttons={availablePlatforms} style={styles.platformButtons} />
+        <SegmentedButtons
+          value={platform}
+          onValueChange={setPlatform}
+          buttons={availablePlatforms}
+          style={styles.platformButtons}
+        />
       </ScrollView>
 
       <View style={styles.toolbar}>
@@ -140,8 +188,18 @@ export default function ReaderView({ route, type, onSelectItem }) {
           <Button mode="outlined" icon="sort" compact onPress={() => setSortVisible(true)}>Sort</Button>
         </View>
         <View style={styles.toolbarActions}>
-          <IconButton icon="view-list" mode={layout === 'list' ? 'contained-tonal' : 'outlined'} onPress={() => setLayout('list')} accessibilityLabel="List view" />
-          <IconButton icon="view-grid" mode={layout === 'grid' ? 'contained-tonal' : 'outlined'} onPress={() => setLayout('grid')} accessibilityLabel="Grid view" />
+          <IconButton
+            icon="view-list"
+            mode={layout === 'list' ? 'contained-tonal' : 'outlined'}
+            onPress={() => setLayout('list')}
+            accessibilityLabel="List view"
+          />
+          <IconButton
+            icon="view-grid"
+            mode={layout === 'grid' ? 'contained-tonal' : 'outlined'}
+            onPress={() => setLayout('grid')}
+            accessibilityLabel="Grid view"
+          />
         </View>
       </View>
 
@@ -151,8 +209,9 @@ export default function ReaderView({ route, type, onSelectItem }) {
           <Button compact onPress={clearFilters}>Clear filters</Button>
         ) : null}
       </View>
+      {cacheStatus ? <Text variant="labelSmall" style={styles.cacheStatus}>{cacheStatus}</Text> : null}
 
-      {loading && !refreshing ? (
+      {loading && !refreshing && data.length === 0 ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" />
           <Text style={styles.muted}>Loading {catalogueType.toLowerCase()} catalogue...</Text>
@@ -231,7 +290,9 @@ export default function ReaderView({ route, type, onSelectItem }) {
           <Dialog.ScrollArea>
             <ScrollView>
               <RadioButton.Group onValueChange={setSortBy} value={sortBy}>
-                {SORT_OPTIONS.map((option) => <RadioButton.Item key={option.value} label={option.label} value={option.value} />)}
+                {SORT_OPTIONS.map((option) => (
+                  <RadioButton.Item key={option.value} label={option.label} value={option.value} />
+                ))}
               </RadioButton.Group>
             </ScrollView>
           </Dialog.ScrollArea>
@@ -239,7 +300,9 @@ export default function ReaderView({ route, type, onSelectItem }) {
         </Dialog>
       </Portal>
 
-      <Snackbar visible={!!snackbar} onDismiss={() => setSnackbar('')} duration={1800}>{snackbar}</Snackbar>
+      <Snackbar visible={!!snackbar} onDismiss={() => setSnackbar('')} duration={1800}>
+        {snackbar}
+      </Snackbar>
     </Surface>
   );
 }
@@ -252,6 +315,7 @@ const styles = StyleSheet.create({
   toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
   toolbarActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   resultSummary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 34 },
+  cacheStatus: { opacity: 0.62, paddingBottom: 3 },
   listContent: { paddingTop: 6, paddingBottom: 24 },
   gridRow: { gap: 4, alignItems: 'stretch' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
