@@ -40,8 +40,8 @@ export default function GameDetailsView({ route, navigation }) {
     setDlcLoading(true);
     setDlcError('');
     try {
-      const rows = await fetchCatalogue(platform, 'DLCS', serverUrl);
-      setRelatedDlc(findRelatedDlc(rows, item));
+      const result = await fetchCatalogue(platform, 'DLCS', serverUrl);
+      setRelatedDlc(findRelatedDlc(result.rows, item));
     } catch (error) {
       setRelatedDlc([]);
       setDlcError(error.message || 'Related DLC could not be loaded.');
