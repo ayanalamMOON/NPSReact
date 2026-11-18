@@ -10,7 +10,7 @@ NPSReact is a catalogue browser for publicly available NoPayStation metadata. It
 
 - Search game and DLC names, original names, title IDs, content IDs and regions.
 - Filter catalogue entries by region, content type and package-link availability.
-- Sort by name, package size, modification date and region.
+- Sort by name, title ID, region, package size and modification date.
 - Switch between list and two-column grid layouts.
 - Open a dedicated details screen with package metadata and available actions.
 - Find related DLC by matching the catalogue Title ID.
