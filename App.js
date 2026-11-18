@@ -13,7 +13,7 @@ import LibraryView from './views/library';
 import GameDetailsView from './views/gameDetails';
 import { SettingsContext, SettingsProvider } from './contexts/SettingsContext';
 import { LibraryProvider } from './contexts/LibraryContext';
-import { getTheme } from './lib/themeUtils';
+import { useAppTheme } from './lib/themeUtils';
 
 const Stack = createNativeStackNavigator();
 
@@ -79,7 +79,7 @@ function HomeView() {
 
 function MainApp() {
   const { colorScheme } = useContext(SettingsContext);
-  const theme = getTheme(colorScheme);
+  const theme = useAppTheme(colorScheme);
 
   useEffect(() => {
     if (Platform.OS === 'android') {
