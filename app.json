@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "NPSReact",
-    "slug": "npsreact",
+    "slug": "NPSReact",
     "version": "1.4.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
