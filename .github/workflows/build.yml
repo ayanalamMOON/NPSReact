@@ -74,9 +74,16 @@ jobs:
 
       - name: Build debug APK, release APK and AAB
         working-directory: android
+        timeout-minutes: 35
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true
         run: |
           chmod +x ./gradlew
-          ./gradlew --no-daemon --stacktrace assembleDebug assembleRelease bundleRelease
+          ./gradlew --no-daemon --stacktrace --info --console=plain \
+            --max-workers=2 \
+            --max-downloads=4 \
+            assembleDebug assembleRelease bundleRelease 2>&1 | tee ../gradle-build.log
+          test "${PIPESTATUS[0]}" -eq 0
 
       - name: Verify outputs and generate checksums
         shell: bash
@@ -100,6 +107,15 @@ jobs:
             echo "Gradle: $(cd android && ./gradlew --version | grep '^Gradle ' | head -n 1)"
             echo "Signing: generated native project's default signing configuration"
           } > build-metadata.txt
+
+      - name: Upload Gradle diagnostics on failure
+        if: failure() && hashFiles('gradle-build.log') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: npsreact-gradle-diagnostics-${{ github.run_id }}
+          path: gradle-build.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload Android build artifacts
         uses: actions/upload-artifact@v7
