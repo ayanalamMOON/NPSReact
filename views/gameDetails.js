@@ -31,6 +31,12 @@ export default function GameDetailsView({ route, navigation }) {
 
   const loadRelatedDlc = useCallback(async () => {
     if (type !== 'GAMES') return;
+    if (!['PSV', 'PS3', 'PSP'].includes(platform)) {
+      setRelatedDlc([]);
+      setDlcError('');
+      setDlcLoading(false);
+      return;
+    }
     setDlcLoading(true);
     setDlcError('');
     try {
@@ -190,6 +196,8 @@ export default function GameDetailsView({ route, navigation }) {
             <Card.Content>
               {dlcLoading ? (
                 <View style={styles.inlineLoading}><ActivityIndicator /><Text style={styles.secondary}>Finding related DLC...</Text></View>
+              ) : !['PSV', 'PS3', 'PSP'].includes(platform) ? (
+                <Text variant="bodyMedium" style={styles.secondary}>No separate DLC catalogue is published for this platform.</Text>
               ) : dlcError ? (
                 <View style={styles.inlineLoading}>
                   <Text style={styles.secondary}>{dlcError}</Text>
