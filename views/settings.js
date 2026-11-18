@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Linking, ScrollView } from 'react-native';
 import {
   Checkbox, Surface, SegmentedButtons, IconButton, Text, List, TextInput,
@@ -7,6 +7,7 @@ import { SettingsContext } from '../contexts/SettingsContext';
 
 const SettingsView = ({ navigation }) => {
   const {
+    ready,
     showDlcsTab,
     selectedPlatforms,
     colorScheme,
@@ -18,31 +19,43 @@ const SettingsView = ({ navigation }) => {
   const [localSelectedPlatforms, setLocalSelectedPlatforms] = useState(selectedPlatforms);
   const [localTheme, setLocalTheme] = useState(colorScheme);
   const [localServerUrl, setLocalServerUrl] = useState(serverUrl);
+  const hydratedRef = useRef(false);
 
+  // Hydrate once after the provider reads SQLite/AsyncStorage. Do not mirror
+  // context updates after this point: changing only the theme must not erase
+  // edits made to the other fields that are still local to this screen.
   useEffect(() => {
+    if (!ready || hydratedRef.current) return;
+
     setLocalShowDlcsTab(showDlcsTab);
     setLocalSelectedPlatforms(selectedPlatforms);
     setLocalTheme(colorScheme);
     setLocalServerUrl(serverUrl);
-  }, [showDlcsTab, selectedPlatforms, colorScheme, serverUrl]);
+    hydratedRef.current = true;
+  }, [ready, showDlcsTab, selectedPlatforms, colorScheme, serverUrl]);
+
+  const pendingSettingsRef = useRef(null);
+  pendingSettingsRef.current = {
+    hydrated: hydratedRef.current,
+    showDlcsTab: localShowDlcsTab,
+    selectedPlatforms: localSelectedPlatforms,
+    serverUrl: localServerUrl.trim(),
+  };
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', () => {
+      const pending = pendingSettingsRef.current;
+      if (!pending || !pending.hydrated) return;
+
       Promise.all([
-        updateSetting('showDlcsTab', localShowDlcsTab),
-        updateSetting('selectedPlatforms', localSelectedPlatforms),
-        updateSetting('serverUrl', localServerUrl.trim()),
+        updateSetting('showDlcsTab', pending.showDlcsTab),
+        updateSetting('selectedPlatforms', pending.selectedPlatforms),
+        updateSetting('serverUrl', pending.serverUrl),
       ]).catch((error) => console.warn('Unable to save settings:', error));
     });
 
     return unsubscribe;
-  }, [
-    navigation,
-    localShowDlcsTab,
-    localSelectedPlatforms,
-    localServerUrl,
-    updateSetting,
-  ]);
+  }, [navigation, updateSetting]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
@@ -51,7 +64,7 @@ const SettingsView = ({ navigation }) => {
         <Checkbox.Item
           label="Show DLC's tab"
           status={localShowDlcsTab ? 'checked' : 'unchecked'}
-          onPress={() => setLocalShowDlcsTab(!localShowDlcsTab)}
+          onPress={() => setLocalShowDlcsTab((value) => !value)}
         />
       </Surface>
 
