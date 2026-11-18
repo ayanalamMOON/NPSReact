@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator, Button, Dialog, Divider, IconButton, Portal,
@@ -41,6 +41,7 @@ export default function ReaderView({ route, type, onSelectItem }) {
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [sortVisible, setSortVisible] = useState(false);
   const [snackbar, setSnackbar] = useState('');
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     if (!availablePlatforms.some((entry) => entry.value === platform)) {
@@ -49,24 +50,36 @@ export default function ReaderView({ route, type, onSelectItem }) {
   }, [availablePlatforms, platform]);
 
   const loadCatalogue = useCallback(async (isRefresh) => {
+    const requestId = ++requestIdRef.current;
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError('');
     try {
       const rows = await fetchCatalogue(platform, catalogueType, serverUrl);
-      setData(rows);
+      if (requestId === requestIdRef.current) setData(rows);
     } catch (loadError) {
-      setError(loadError.message || 'Unable to load the catalogue.');
-      setData([]);
+      if (requestId === requestIdRef.current) {
+        setError(loadError.message || 'Unable to load the catalogue.');
+        setData([]);
+      }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [platform, catalogueType, serverUrl]);
 
   useEffect(() => {
     loadCatalogue(false);
+    return () => { requestIdRef.current += 1; };
   }, [loadCatalogue]);
+
+  useEffect(() => {
+    setRegion('All');
+    setContentType('All');
+    setAvailability('all');
+  }, [platform, catalogueType]);
 
   const regions = useMemo(() => getDistinctRegions(data), [data]);
   const filteredItems = useMemo(() => {
