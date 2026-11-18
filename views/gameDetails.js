@@ -1,13 +1,13 @@
-import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { ScrollView, StyleSheet, View, Platform } from 'react-native';
 import {
   ActivityIndicator, Button, Card, Chip, Dialog, IconButton, List,
-  Portal, Snackbar, Text, useTheme,
+  Portal, ProgressBar, Snackbar, Text, useTheme,
 } from 'react-native-paper';
 import { SettingsContext } from '../contexts/SettingsContext';
 import { LibraryContext } from '../contexts/LibraryContext';
 import { fetchCatalogue } from '../lib/catalogueService';
-import { copyToClipboard, downloadFile, triggerHapticFeedback } from '../lib/platformUtils';
+import { copyToClipboard, downloadFile, isNative, triggerHapticFeedback } from '../lib/platformUtils';
 import {
   findRelatedDlc, formatFileSize, getContentId, getField, getItemKey,
   getItemName, getRegion, getTitleId,
@@ -25,6 +25,9 @@ export default function GameDetailsView({ route, navigation }) {
   const [dlcError, setDlcError] = useState('');
   const [collectionDialog, setCollectionDialog] = useState(false);
   const [snackbar, setSnackbar] = useState('');
+  const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(null);
+  const downloadTaskRef = useRef(null);
   const favorite = isFavorite(item);
 
   useEffect(() => { recordRecent(item); }, [item, recordRecent]);
@@ -40,8 +43,8 @@ export default function GameDetailsView({ route, navigation }) {
     setDlcLoading(true);
     setDlcError('');
     try {
-      const rows = await fetchCatalogue(platform, 'DLCS', serverUrl);
-      setRelatedDlc(findRelatedDlc(rows, item));
+      const result = await fetchCatalogue(platform, 'DLCS', serverUrl);
+      setRelatedDlc(findRelatedDlc(result.rows, item));
     } catch (error) {
       setRelatedDlc([]);
       setDlcError(error.message || 'Related DLC could not be loaded.');
@@ -66,13 +69,47 @@ export default function GameDetailsView({ route, navigation }) {
       setSnackbar('No package download link is available for this entry.');
       return;
     }
+
+    setDownloading(true);
+    setDownloadProgress(null);
+    downloadTaskRef.current = null;
     try {
       triggerHapticFeedback();
-      setSnackbar('Starting download...');
-      await downloadFile(url, getItemName(item).replace(/[\\/:*?"<>|]/g, '_') + '.pkg');
-      setSnackbar('Download request completed.');
+      setSnackbar('Preparing package download...');
+      const result = await downloadFile(
+        url,
+        getItemName(item).replace(/[\\/:*?"<>|]/g, '_') + '.pkg',
+        (received, total) => {
+          setDownloadProgress(total ? Math.max(0, Math.min(1, received / total)) : null);
+        },
+        (task) => {
+          downloadTaskRef.current = task;
+        }
+      );
+
+      setSnackbar(result.managedBySystem
+        ? 'Download completed. Check Downloads/NPSReact.'
+        : 'Download ready in the document chooser.');
     } catch (error) {
-      setSnackbar(error.message || 'Download failed.');
+      if (error && error.code === 'ECANCELED') {
+        setSnackbar('Download cancelled.');
+      } else {
+        setSnackbar(error.message || 'Download failed.');
+      }
+    } finally {
+      downloadTaskRef.current = null;
+      setDownloading(false);
+      setDownloadProgress(null);
+    }
+  };
+
+  const cancelDownload = async () => {
+    try {
+      if (downloadTaskRef.current && downloadTaskRef.current.cancel) {
+        await downloadTaskRef.current.cancel();
+      }
+    } catch (error) {
+      setSnackbar(error.message || 'Unable to cancel the download.');
     }
   };
 
@@ -149,10 +186,14 @@ export default function GameDetailsView({ route, navigation }) {
               mode="contained"
               icon="download"
               onPress={download}
-              disabled={!getField(item, 'PKG direct link') || getField(item, 'PKG direct link').toUpperCase() === 'MISSING'}
+              loading={downloading}
+              disabled={downloading || !getField(item, 'PKG direct link') || getField(item, 'PKG direct link').toUpperCase() === 'MISSING'}
             >
-              Download
+              {downloading ? 'Downloading' : 'Download'}
             </Button>
+            {isNative && downloading ? (
+              <Button compact mode="text" onPress={cancelDownload}>Cancel</Button>
+            ) : null}
             <Button
               mode="outlined"
               icon="content-copy"
@@ -162,6 +203,25 @@ export default function GameDetailsView({ route, navigation }) {
               Copy license
             </Button>
           </Card.Actions>
+          {downloading ? (
+            <Card.Content>
+              {downloadProgress === null ? (
+                <Text variant="bodySmall" style={styles.secondary}>
+                  {Platform.OS === 'android'
+                    ? 'Android Download Manager is handling the transfer. Progress is available in the system notification.'
+                    : 'Downloading package...'}
+                </Text>
+              ) : (
+                <Text variant="bodySmall" style={styles.secondary}>
+                  {Math.round(downloadProgress * 100)}% downloaded
+                </Text>
+              )}
+              <ProgressBar
+                indeterminate={downloadProgress === null}
+                progress={downloadProgress || 0}
+              />
+            </Card.Content>
+          ) : null}
         </Card>
 
         <Card mode="outlined" style={styles.card}>
