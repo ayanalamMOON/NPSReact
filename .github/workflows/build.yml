@@ -20,18 +20,24 @@ concurrency:
 
 jobs:
   build-android:
-    name: Build Android APKs
+    name: Validate and build Android
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
+    permissions:
+      contents: write
 
     steps:
-      - name: Checkout source
+      - name: Checkout source branch
         uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22.13.x"
           cache: npm
 
       - name: Set up Java
@@ -40,18 +46,37 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Install dependencies
+      - name: Resolve SDK-compatible dependencies
+        run: |
+          npm install --no-audit --no-fund
+          npx expo install --fix
+          npx expo install --check
+
+      - name: Commit Expo dependency alignment
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          if ! git diff --quiet -- package.json package-lock.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package.json package-lock.json
+            git commit -m "chore: align dependency lockfile with Expo SDK 58"
+            git push
+          fi
+
+      - name: Install locked dependencies
         run: npm ci
 
-      - name: Check Expo project configuration
+      - name: Validate Expo project configuration
         run: npx expo config --type public
 
-      - name: Run Expo Doctor (diagnostic)
+      - name: Run Expo Doctor
         run: npx expo-doctor
-        continue-on-error: true
 
-      - name: Verify Android JavaScript bundle
+      - name: Export Android JavaScript bundle
         run: npx expo export --platform android --output-dir dist/android
+
+      - name: Export web application
+        run: npx expo export --platform web --output-dir dist/web
 
       - name: Generate clean Android native project
         run: npx expo prebuild --platform android --no-install --clean
@@ -62,33 +87,36 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-sdk58-${{ hashFiles('android/gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
-            ${{ runner.os }}-gradle-
+            ${{ runner.os }}-gradle-sdk58-
 
-      - name: Build debug and release APKs
+      - name: Build debug APK, release APK and AAB
         working-directory: android
         run: |
           chmod +x ./gradlew
-          ./gradlew --no-daemon --stacktrace assembleDebug assembleRelease
+          ./gradlew --no-daemon --stacktrace assembleDebug assembleRelease bundleRelease
 
-      - name: Verify APK outputs and generate checksums
+      - name: Verify outputs and generate checksums
         shell: bash
         run: |
           set -euo pipefail
           DEBUG_APK="android/app/build/outputs/apk/debug/app-debug.apk"
           RELEASE_APK="android/app/build/outputs/apk/release/app-release.apk"
+          RELEASE_AAB="android/app/build/outputs/bundle/release/app-release.aab"
           test -s "$DEBUG_APK"
           test -s "$RELEASE_APK"
-          sha256sum "$DEBUG_APK" "$RELEASE_APK" > checksums.txt
+          test -s "$RELEASE_AAB"
+          sha256sum "$DEBUG_APK" "$RELEASE_APK" "$RELEASE_AAB" > checksums.txt
           {
             echo "Repository: ${{ github.repository }}"
             echo "Commit: ${{ github.sha }}"
             echo "Ref: ${{ github.ref }}"
-            echo "Expo SDK: 52"
+            echo "Expo: $(node -p "require('./node_modules/expo/package.json').version")"
+            echo "React Native: $(node -p "require('./node_modules/react-native/package.json').version")"
             echo "Node: $(node --version)"
             echo "Java: $(java -version 2>&1 | head -n 1)"
-            echo "Artifacts: app-debug.apk, app-release.apk"
+            echo "Gradle: $(cd android && ./gradlew --version | grep '^Gradle ' | head -n 1)"
             echo "Signing: generated native project's default signing configuration"
           } > build-metadata.txt
 
@@ -99,6 +127,7 @@ jobs:
           path: |
             android/app/build/outputs/apk/debug/app-debug.apk
             android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/bundle/release/app-release.aab
             checksums.txt
             build-metadata.txt
           if-no-files-found: error
@@ -113,7 +142,7 @@ jobs:
       contents: write
 
     steps:
-      - name: Download APK artifacts
+      - name: Download build outputs
         uses: actions/download-artifact@v4
         with:
           name: npsreact-android-${{ github.sha }}
@@ -125,11 +154,12 @@ jobs:
           name: NPSReact ${{ github.ref_name }}
           generate_release_notes: true
           body: |
-            Android APKs built automatically by GitHub Actions.
+            Android builds generated by GitHub Actions.
 
-            The release APK uses the generated native project's default signing configuration and is intended for direct testing/installation. Configure a persistent upload keystore before using builds for Play Store distribution or seamless updates between releases.
+            The release APK and AAB use the generated native project's default signing configuration. They are suitable for direct testing, but are not Play Store-ready. Configure a persistent upload keystore and signing secrets before publishing through Google Play or expecting seamless updates between installed versions.
           files: |
             release-assets/**/*.apk
+            release-assets/**/*.aab
             release-assets/checksums.txt
             release-assets/build-metadata.txt
           fail_on_unmatched_files: true
