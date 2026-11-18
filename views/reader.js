@@ -54,6 +54,13 @@ export default function ReaderView({ route, type, onSelectItem }) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError('');
+    if (catalogueType === 'DLCS' && !['PSV', 'PS3', 'PSP'].includes(platform)) {
+      setData([]);
+      setError('unsupported:' + platform);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     try {
       const rows = await fetchCatalogue(platform, catalogueType, serverUrl);
       if (requestId === requestIdRef.current) setData(rows);
@@ -149,6 +156,11 @@ export default function ReaderView({ route, type, onSelectItem }) {
         <View style={styles.center}>
           <ActivityIndicator size="large" />
           <Text style={styles.muted}>Loading {catalogueType.toLowerCase()} catalogue...</Text>
+        </View>
+      ) : error.startsWith('unsupported:') ? (
+        <View style={styles.center}>
+          <Text variant="titleMedium">No DLC catalogue for this platform</Text>
+          <Text style={styles.muted}>No separate DLC TSV is published for {error.replace('unsupported:', '')}. Choose PSV, PSP or PS3.</Text>
         </View>
       ) : error ? (
         <View style={styles.center}>
