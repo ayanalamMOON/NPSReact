@@ -30,8 +30,55 @@ export default function App() {
   );
 }
 
+function HomeView() {
+  const navigation = useNavigation();
+  const { showDlcsTab } = useContext(SettingsContext);
+  const [index, setIndex] = useState(0);
+  const routes = [
+    { key: 'games', title: 'Games', focusedIcon: 'gamepad-variant' },
+    ...(showDlcsTab ? [{ key: 'dlcs', title: "DLC's", focusedIcon: 'puzzle' }] : []),
+    { key: 'library', title: 'Library', focusedIcon: 'bookshelf' },
+  ];
+
+  useEffect(() => {
+    if (index >= routes.length) setIndex(0);
+  }, [index, routes.length]);
+
+  const openDetails = (item, platform, type) => {
+    navigation.navigate('GameDetails', { item, platform, type });
+  };
+
+  const renderScene = ({ route }) => {
+    if (route.key === 'games') {
+      return <ReaderView type="GAMES" onSelectItem={openDetails} />;
+    }
+    if (route.key === 'dlcs') {
+      return <ReaderView type="DLCS" onSelectItem={openDetails} />;
+    }
+    return <LibraryView onSelectItem={openDetails} />;
+  };
+
+  return (
+    <>
+      <Appbar.Header>
+        <Appbar.Content title="NoPayStation" />
+        <Appbar.Action
+          icon="cog"
+          onPress={() => navigation.navigate('Settings')}
+          accessibilityLabel="Settings"
+        />
+      </Appbar.Header>
+      <BottomNavigation
+        navigationState={{ index, routes }}
+        onIndexChange={setIndex}
+        renderScene={renderScene}
+      />
+    </>
+  );
+}
+
 function MainApp() {
-  const { colorScheme, showDlcsTab } = useContext(SettingsContext);
+  const { colorScheme } = useContext(SettingsContext);
   const theme = getTheme(colorScheme);
 
   useEffect(() => {
@@ -41,52 +88,6 @@ function MainApp() {
       });
     }
   }, [theme.colors.background]);
-
-  const HomeView = () => {
-    const navigation = useNavigation();
-    const [index, setIndex] = useState(0);
-    const routes = [
-      { key: 'games', title: 'Games', focusedIcon: 'gamepad-variant' },
-      ...(showDlcsTab ? [{ key: 'dlcs', title: "DLC's", focusedIcon: 'puzzle' }] : []),
-      { key: 'library', title: 'Library', focusedIcon: 'bookshelf' },
-    ];
-
-    useEffect(() => {
-      if (index >= routes.length) setIndex(0);
-    }, [index, routes.length]);
-
-    const openDetails = (item, platform, type) => {
-      navigation.navigate('GameDetails', { item, platform, type });
-    };
-
-    const renderScene = ({ route }) => {
-      if (route.key === 'games') {
-        return <ReaderView type="GAMES" onSelectItem={openDetails} />;
-      }
-      if (route.key === 'dlcs') {
-        return <ReaderView type="DLCS" onSelectItem={openDetails} />;
-      }
-      return <LibraryView onSelectItem={openDetails} />;
-    };
-
-    return (
-      <>
-        <Appbar.Header>
-          <Appbar.Content title="NoPayStation" />
-          <Appbar.Action
-            icon="cog"
-            onPress={() => navigation.navigate('Settings')}
-            accessibilityLabel="Settings"
-          />
-        </Appbar.Header>
-        <BottomNavigation
-          navigationState={{ index, routes }}
-          onIndexChange={setIndex}
-          renderScene={renderScene}
-        />
-      </>
-    );
-  };
 
   return (
     <PaperProvider theme={theme}>
