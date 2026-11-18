@@ -1,4 +1,4 @@
-[![Android Build](https://github.com/100Daisy/NPSReact/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/100Daisy/NPSReact/actions/workflows/build.yml)
+[![Android Build](https://github.com/ayanalamMOON/NPSReact/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/ayanalamMOON/NPSReact/actions/workflows/build.yml)
 
 # NPSReact
 
@@ -42,6 +42,28 @@ Available platforms can be configured in Settings. Games and DLC catalogues are 
 - AsyncStorage
 - PapaParse for TSV parsing
 - react-native-blob-util for Android downloads
+
+## Android CI/CD
+
+GitHub Actions builds the Android app on pushes to `main`, pull requests targeting `main`, and manual workflow dispatches.
+
+The workflow runs dependency installation, Expo configuration validation, an Expo Doctor diagnostic, Android JavaScript bundling, a clean Expo Prebuild, and Gradle compilation of both debug and release APKs.
+
+### Download a build
+
+1. Open the repository's **Actions** tab.
+2. Select **NPSReact Android CI/CD**.
+3. Open the latest successful **Build Android APKs** run.
+4. Download the `npsreact-android-<commit-sha>` artifact.
+5. Install `app-debug.apk` for development testing or `app-release.apk` for direct device testing.
+
+Each build also includes SHA-256 checksums and build metadata. Artifacts are retained for 30 days.
+
+### Publish a GitHub Release
+
+Push a version tag such as `v1.3.0`. GitHub Actions will build the APKs and publish them with generated release notes.
+
+**Signing note:** The generated release APK uses the native project's default signing configuration. It is suitable for direct installation/testing, but production distribution through Google Play and seamless updates across releases require a persistent Android upload keystore configured in the project.
 
 ## Development
 
