@@ -57,7 +57,7 @@ The default catalogue endpoint uses HTTPS. Custom catalogue servers must use HTT
 
 GitHub Actions builds the Android app on pushes to `main`, pull requests targeting `main`, version tags, and manual workflow dispatches.
 
-The workflow aligns Expo dependencies, persists the resulting lockfile when it changes on a same-repository branch, installs the locked dependency graph, runs Expo Doctor, exports Android and web bundles, generates a clean Android native project, and compiles a debug APK, release APK and Android App Bundle.
+The workflow aligns SDK-compatible Expo dependencies, generates a CI-local lockfile from the migrated dependency manifest, validates the dependency graph with Expo Doctor, exports Android and web bundles, generates a clean Android native project, and compiles a debug APK, release APK and Android App Bundle. The workflow uses read-only repository permissions for pull-request builds; commit the regenerated package-lock.json from a local npm install when preparing the next source update.
 
 ### Download a build
 
