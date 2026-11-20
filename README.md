@@ -44,6 +44,7 @@ Available platforms can be configured in Settings. Games and DLC catalogues are 
 - React Native Paper (Material 3)
 - React Navigation 7
 - Expo SQLite KV Store for native persistence
+- Expo Splash Screen config plugin for native launch-screen configuration
 - AsyncStorage for browser persistence and one-time legacy-data migration
 - PapaParse for TSV parsing
 - react-native-blob-util 1.x for native file transfers, Android's system DownloadManager/Downloads collection, and iOS document sharing

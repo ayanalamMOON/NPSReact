@@ -46,11 +46,26 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Generate lockfile and install exact dependency graph
+      - name: Generate dependency lockfile
+        timeout-minutes: 5
+        env:
+          npm_config_fetch_retries: "2"
+          npm_config_fetch_retry_mintimeout: "10000"
+          npm_config_fetch_retry_maxtimeout: "30000"
         run: |
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          npm ci --no-audit --no-fund
-          npx expo install --check
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund --fetch-retries=2
+
+      - name: Install locked dependencies
+        timeout-minutes: 10
+        env:
+          npm_config_fetch_retries: "2"
+          npm_config_fetch_retry_mintimeout: "10000"
+          npm_config_fetch_retry_maxtimeout: "30000"
+        run: npm ci --no-audit --no-fund --fetch-retries=2
+
+      - name: Verify Expo dependency compatibility
+        timeout-minutes: 5
+        run: npx expo install --check
 
       - name: Validate Expo project configuration
         run: npx expo config --type public
@@ -74,9 +89,15 @@ jobs:
 
       - name: Build debug APK, release APK and AAB
         working-directory: android
+        timeout-minutes: 35
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.caching=true
         run: |
           chmod +x ./gradlew
-          ./gradlew --no-daemon --stacktrace assembleDebug assembleRelease bundleRelease
+          ./gradlew --no-daemon --stacktrace --info --console=plain \
+            --max-workers=2 \
+            assembleDebug assembleRelease bundleRelease 2>&1 | tee ../gradle-build.log
+          test "${PIPESTATUS[0]}" -eq 0
 
       - name: Verify outputs and generate checksums
         shell: bash
@@ -100,6 +121,15 @@ jobs:
             echo "Gradle: $(cd android && ./gradlew --version | grep '^Gradle ' | head -n 1)"
             echo "Signing: generated native project's default signing configuration"
           } > build-metadata.txt
+
+      - name: Upload Gradle diagnostics on failure
+        if: failure() && hashFiles('gradle-build.log') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: npsreact-gradle-diagnostics-${{ github.run_id }}
+          path: gradle-build.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload Android build artifacts
         uses: actions/upload-artifact@v7
@@ -148,6 +178,10 @@ jobs:
             git commit -m "chore: sync npm lockfile with Expo SDK 58"
             git push origin HEAD:${{ github.event.pull_request.head.ref }}
           fi
+
+      # A GITHUB_TOKEN push does not trigger another pull_request workflow run.
+      # The parent build already validated this exact dependency graph before
+      # the lockfile-only commit is produced. Avoid recursive approval gates.
 
   publish-github-release:
     name: Publish tagged Android release
