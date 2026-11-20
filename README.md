@@ -70,9 +70,24 @@ The workflow resolves the exact SDK-compatible dependency graph, generates a loc
 
 Each build includes an Android App Bundle, SHA-256 checksums and build metadata. Artifacts are retained for 30 days.
 
-### Publish a GitHub Release
+### Publish a versioned GitHub Release
 
-Push a version tag such as `v1.4.0`. GitHub Actions will build the APKs and AAB, then publish them with generated release notes.
+Releases are tag-triggered. A push to `main` only creates a CI build artifact; it does not publish a GitHub Release.
+
+1. Update the `version` field in `package.json` and commit that version change to `main`.
+2. Create an annotated tag whose version exactly matches `package.json`, prefixed with `v`.
+3. Push the tag. The Android workflow validates the tag/version match, runs the full build, and only after a successful build publishes a GitHub Release.
+
+For example, when `package.json` contains `"version": "1.4.0"`:
+
+```bash
+git checkout main
+git pull --ff-only origin main
+git tag -a v1.4.0 -m "NPSReact v1.4.0"
+git push origin v1.4.0
+```
+
+The release contains the debug APK, release APK, release AAB, SHA-256 checksums and build metadata, plus GitHub-generated release notes. If the tag does not match the package version or the build fails, publication is blocked.
 
 **Signing note:** The generated release APK and AAB use the native project's default signing configuration. They are suitable for testing, not Google Play distribution. Configure a persistent Android upload keystore and matching GitHub Actions secrets before production publishing or seamless in-place app updates.
 
