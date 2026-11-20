@@ -179,6 +179,10 @@ jobs:
             git push origin HEAD:${{ github.event.pull_request.head.ref }}
           fi
 
+      # A GITHUB_TOKEN push does not trigger another pull_request workflow run.
+      # The parent build already validated this exact dependency graph before
+      # the lockfile-only commit is produced. Avoid recursive approval gates.
+
   publish-github-release:
     name: Publish tagged Android release
     needs: build-android
